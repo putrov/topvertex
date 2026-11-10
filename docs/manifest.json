@@ -1,6 +1,6 @@
 {
   "wheel": "topvertex-0.1.0-py3-none-any.whl",
   "version": "0.1.0",
-  "sha256": "9e6c900514b75762a01a40fc1fb43f81ce846090d748b0c79d87e94df986cdbc",
+  "sha256": "f4a25c8cd7a21774ae797a768f798e4f76d8d684922a54a4befe479e715e674b",
   "pyodide": "0.27.7"
 }

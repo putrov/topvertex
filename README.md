@@ -17,7 +17,7 @@ Calabi-Yau threefold with the **topological vertex** of Aganagic-Klemm-Mariño-V
 
 The conventions follow Konishi ([math/0504188](https://arxiv.org/abs/math/0504188)). They are
 explained from scratch, with examples worked out by hand, in the accompanying notes
-[`notes/topvertex_notes.pdf`](notes/topvertex_notes.pdf) (36 pages). The notes are
+[`notes/topvertex_notes.pdf`](notes/topvertex_notes.pdf) (37 pages). The notes are
 self-contained, and no background in string theory or toric geometry is assumed. The file
 `CONVENTIONS.md` is a short technical summary of the same conventions.
 
