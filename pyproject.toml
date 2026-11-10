@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "topvertex"
+version = "0.1.0"
+description = "Topological vertex (AKMV) partition functions of toric Calabi-Yau threefolds from triangulations of lattice polygons"
+license = {text = "MIT"}
+authors = [{name = "Pavel Putrov"}]
+requires-python = ">=3.11"
+dependencies = ["sympy>=1.13"]
+
+[project.scripts]
+topvertex = "topvertex.cli:main"
+
+[project.optional-dependencies]
+# fast: compiled exact polynomial arithmetic and LP solver; without them pure-Python
+# fallbacks are used (same results, see topvertex.qring.BACKEND, polygon.lp_backend)
+fast = ["python-flint>=0.7", "scipy"]
+full = ["python-flint>=0.7", "scipy", "matplotlib"]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["topvertex*"]
+
+[tool.setuptools.package-data]
+topvertex = ["draw/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: long-running checks (deselect with -m \"not slow\")",
+]

@@ -1,0 +1,15 @@
+.venv/
+refs/
+__pycache__/
+*.pyc
+.pytest_cache/
+notes/*.aux
+notes/*.log
+notes/*.out
+notes/*.toc
+notes/*.fls
+notes/*.fdb_latexmk
+notes/*.synctex.gz
+topvertex.egg-info/
+dist/
+build/

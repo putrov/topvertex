@@ -1,0 +1,1180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>topvertex draw</title>
+<!-- topvertex-draw-page: graphical input for python -m topvertex (see topvertex/draw/server.py) -->
+<style>
+:root {
+  --bg: #f7f7f5; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #d9d9de;
+  --grid: #c4c4cc; --poly: rgba(70, 120, 200, 0.13); --polyedge: #3c6fb6; --diag: #2b2b33;
+  --bpt: #3c6fb6; --ipt: #d0632b; --corner: #3c6fb6; --face: rgba(80, 170, 110, 0.10);
+  --web: #b0302a; --pending: #e0a400; --ok: #2f8a4a; --err: #c0302a; --accent: #3c6fb6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #18181b; --panel: #222226; --ink: #ececf0; --muted: #a0a0aa; --line: #3a3a42;
+    --grid: #55555f; --poly: rgba(110, 160, 240, 0.16); --polyedge: #7aa7ea; --diag: #e4e4ea;
+    --bpt: #7aa7ea; --ipt: #f08a50; --corner: #7aa7ea; --face: rgba(90, 200, 130, 0.12);
+    --web: #ff7a6e; --pending: #ffc933; --ok: #5cc27a; --err: #ff6b5e; --accent: #7aa7ea;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 14px;
+         border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 16px; margin: 0 12px 0 0; }
+button, select, input { font: inherit; color: inherit; }
+button { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 3px 10px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+input[type=text], input[type=number], textarea, select {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
+.sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+#views { display: grid; grid-template-columns: 3fr 2fr; gap: 10px; padding: 10px 14px 0; }
+.view { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; position: relative; }
+.view .cap { position: absolute; left: 10px; top: 6px; font-size: 12px; color: var(--muted); pointer-events: none; }
+svg { display: block; width: 100%; height: 540px; user-select: none; }
+#canvas { cursor: crosshair; }
+#panels { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 14px 20px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 8px; }
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
+.row > input[type=text], .row > textarea { flex: 1; min-width: 120px; }
+textarea { width: 100%; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+pre { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px;
+      overflow-x: auto; font-size: 12px; margin: 4px 0; max-height: 320px; }
+table { border-collapse: collapse; font-size: 12px; }
+td, th { padding: 2px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.ok { color: var(--ok); } .err { color: var(--err); } .muted { color: var(--muted); }
+#msg { min-height: 1.4em; }
+.disp { overflow-x: auto; overflow-y: hidden; margin: 2px 0; }
+#views > *, #panels > * { min-width: 0; }
+pre.tex { white-space: pre-wrap; overflow-wrap: anywhere; }
+.sub { margin-top: 8px; font-weight: 600; }
+code { font-size: 12px; }
+@media (max-width: 900px) { #views, #panels { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>topvertex · draw</h1>
+  <button id="m-polygon" data-mode="polygon" title="click lattice points to add corners; right/shift-click removes">Polygon</button>
+  <button id="m-tri" data-mode="tri" title="click two lattice points to add/remove a diagonal; Alt-click a diagonal flips it">Triangulate</button>
+  <button id="m-flip" data-mode="flip" title="click an interior diagonal to flip it">Flip</button>
+  <span class="sep"></span>
+  <button id="b-auto" title="complete the diagonals greedily to a unimodular triangulation">Auto-triangulate</button>
+  <button id="b-cleardiag">Clear diagonals</button>
+  <button id="b-clearall">Clear all</button>
+  <span class="sep"></span>
+  <button id="b-zoomin" title="zoom in (+)">+</button>
+  <button id="b-zoomout" title="zoom out (−)">−</button>
+  <button id="b-fit" title="fit the view to the polygon">Fit</button>
+  <span class="muted" id="hover"></span>
+</header>
+
+<div id="views">
+  <div class="view"><span class="cap">toric diagram · arrows / shift-drag pan</span><svg id="canvas"></svg></div>
+  <div class="view"><span class="cap" id="webcap">dual web</span><svg id="web"></svg></div>
+</div>
+
+<div id="panels">
+  <div>
+    <section>
+      <h2>Polygon</h2>
+      <div class="row"><input type="text" id="corners" spellcheck="false" placeholder="p=x,y_x,y_... or a URL with p=...">
+        <button id="b-corners">Set</button></div>
+      <div id="msg"></div>
+    </section>
+    <section style="margin-top:10px">
+      <h2>Status</h2>
+      <div id="status"></div>
+    </section>
+    <section style="margin-top:10px">
+      <h2>Export</h2>
+      <div class="row"><input type="text" id="cmd" readonly spellcheck="false"><button id="b-copy">Copy</button></div>
+      <div class="row"><textarea id="json" rows="4" spellcheck="false" placeholder='{"corners": [[x,y],...], "triangles": [[[x,y],[x,y],[x,y]],...]}'></textarea></div>
+      <div class="row"><button id="b-jsonout">Export JSON</button><button id="b-jsonin">Import JSON</button>
+        <button id="b-copytex" disabled title="LaTeX of the last Compute result">Copy result LaTeX</button></div>
+    </section>
+  </div>
+  <div>
+    <section>
+      <h2>Compute</h2>
+      <div class="row">
+        <label>order D <input type="number" id="order" value="4" min="0" max="40" style="width:4.5em"></label>
+        <label>format <select id="fmt"><option value="mathjax" selected>rendered (MathJax)</option><option>text</option><option>latex</option><option>mathematica</option></select></label>
+        <label title="extracts the Gopakumar-Vafa invariants n^g_β from the free energy F = log Z and shows them in a table (rows: curve classes β of weight up to the order D, columns: genus g)"><input type="checkbox" id="gv" checked> GV</label>
+        <label title="writes Z in curve-class variables: one variable t_i per basis class of H2 instead of one variable Q_e per internal edge, so that edges in the same class share a variable"><input type="checkbox" id="classes"> classes</label>
+        <label title="compares with the 5d Nekrasov partition function of the linear quiver when every triangle has a side parallel to one lattice direction, for all classes up to the order D"><input type="checkbox" id="nek"> Nekrasov</label>
+      </div>
+      <div class="row"><input type="text" id="heights" spellcheck="false" placeholder="truncation heights (optional, lattice-point order)" title="truncation heights: one integer per lattice point, in the lattice-point order shown below the diagram. The triangles must be the projections of the lower faces of the convex hull of the lifted points (x, y, h). The heights fix the weights w_e of the internal edges (the edge lengths of the dual web), which define the truncation order D. Leave empty to let the program choose."></div>
+      <div class="row"><button id="b-compute">Compute</button><span id="chint" class="muted"></span></div>
+      <div id="result"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =====================================================================================
+ * GEOMETRY -- pure functions on integer points [x, y]; mirrors topvertex/polygon.py and
+ * the framing rule of topvertex/toric.py (CONVENTIONS.md).  Review this block against Python.
+ * ===================================================================================== */
+const key = p => p[0] + "," + p[1];
+const unkey = k => k.split(",").map(Number);
+const segKey = (a, b) => { const ka = key(a), kb = key(b); return ka < kb ? ka + "|" + kb : kb + "|" + ka; };
+const eq = (a, b) => a[0] === b[0] && a[1] === b[1];
+const lexCmp = (a, b) => a[0] - b[0] || a[1] - b[1];
+
+/** Twice the signed area of (a, b, c) = (b-a)^(c-a); > 0 iff counterclockwise (polygon.orient). */
+function orient(a, b, c) { return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]); }
+
+function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) [a, b] = [b, a % b]; return a; }
+
+/** Convex hull, ccw from the lexicographically smallest point, collinear points dropped
+ *  (Andrew's monotone chain, as polygon.convex_hull). */
+function convexHull(points) {
+  const seen = new Set(), pts = [];
+  for (const p of points) if (!seen.has(key(p))) { seen.add(key(p)); pts.push([p[0], p[1]]); }
+  pts.sort(lexCmp);
+  if (pts.length <= 2) return pts;
+  const chain = seq => {
+    const out = [];
+    for (const p of seq) {
+      while (out.length >= 2 && orient(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop();
+      out.push(p);
+    }
+    return out;
+  };
+  const lower = chain(pts), upper = chain(pts.slice().reverse());
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
+/** +1 strictly inside, 0 on the boundary, -1 outside the ccw convex polygon hull (polygon._in_hull). */
+function inHull(p, hull) {
+  let worst = 1;
+  for (let i = 0; i < hull.length; i++) {
+    const o = orient(hull[i], hull[(i + 1) % hull.length], p);
+    if (o < 0) return -1;
+    if (o === 0) worst = 0;
+  }
+  return worst;
+}
+
+/** Twice the area (shoelace), as polygon.area2. */
+function area2(c) {
+  let s = 0;
+  for (let i = 0; i < c.length; i++) { const j = (i + 1) % c.length; s += c[i][0] * c[j][1] - c[j][0] * c[i][1]; }
+  return Math.abs(s);
+}
+
+/** All lattice points of conv(hull), sorted by (x, y) like polygon.lattice_points. */
+function latticePoints(hull) {
+  if (hull.length < 3) return [];
+  const xs = hull.map(p => p[0]), ys = hull.map(p => p[1]), out = [];
+  for (let x = Math.min(...xs); x <= Math.max(...xs); x++)
+    for (let y = Math.min(...ys); y <= Math.max(...ys); y++)
+      if (inHull([x, y], hull) >= 0) out.push([x, y]);
+  return out;
+}
+
+/** A lattice segment has no lattice point in its interior iff gcd(dx, dy) = 1. */
+function isPrimitive(a, b) { return gcd(b[0] - a[0], b[1] - a[1]) === 1; }
+
+/** Both endpoints on the line of one hull side (segment lies on the boundary). */
+function onBoundary(a, b, hull) {
+  for (let i = 0; i < hull.length; i++) {
+    const u = hull[i], v = hull[(i + 1) % hull.length];
+    if (orient(u, v, a) === 0 && orient(u, v, b) === 0) return true;
+  }
+  return false;
+}
+
+/** Proper crossing of open segments ab and cd.  For primitive lattice segments this is the only
+ *  way two distinct segments can meet outside common endpoints (an overlap or a T-junction
+ *  would put a lattice point in the interior of one of them). */
+function crosses(a, b, c, d) {
+  return orient(a, b, c) * orient(a, b, d) < 0 && orient(c, d, a) * orient(c, d, b) < 0;
+}
+
+/** Primitive boundary segments: each hull side cut at its gcd(dx, dy) - 1 interior lattice points. */
+function boundarySegments(hull) {
+  const out = [];
+  for (let i = 0; i < hull.length; i++) {
+    const u = hull[i], v = hull[(i + 1) % hull.length];
+    const g = gcd(v[0] - u[0], v[1] - u[1]), sx = (v[0] - u[0]) / g, sy = (v[1] - u[1]) / g;
+    for (let j = 0; j < g; j++) out.push([[u[0] + j * sx, u[1] + j * sy], [u[0] + (j + 1) * sx, u[1] + (j + 1) * sy]]);
+  }
+  return out;
+}
+
+/** Why the interior diagonal ab cannot be added ("" if admissible).  geo = analysis of the polygon,
+ *  segs = Map segKey -> [a, b] of the current diagonals. */
+function whyNot(a, b, geo, segs) {
+  if (eq(a, b)) return "same point";
+  if (!geo.ptSet.has(key(a)) || !geo.ptSet.has(key(b))) return "endpoint outside the polygon";
+  if (!isPrimitive(a, b)) return "segment contains a lattice point in its interior";
+  if (onBoundary(a, b, geo.hull)) return "segment lies on the boundary";
+  if (segs.has(segKey(a, b))) return "already present";
+  for (const [c, d] of segs.values()) if (crosses(a, b, c, d)) return `crosses ${key(c)}–${key(d)}`;
+  return "";
+}
+
+/** Faces of the planar subdivision cut out by the (non-crossing, primitive) segments that are
+ *  triangles: 3-cycles (a, b, c) with no lattice point of the polygon strictly inside.  Since no
+ *  segment crosses a side, an empty 3-cycle is a face; it has no lattice points besides its
+ *  vertices, so by Pick it is unimodular (twice-area 1).  Returned ccw, deduplicated. */
+function triangleFaces(points, segList) {
+  const adj = new Map(points.map(p => [key(p), new Set()]));
+  for (const [a, b] of segList) { adj.get(key(a)).add(key(b)); adj.get(key(b)).add(key(a)); }
+  const faces = [], seen = new Set();
+  for (const [a, b] of segList) {
+    for (const kc of adj.get(key(a))) {
+      if (!adj.get(key(b)).has(kc)) continue;
+      const c = unkey(kc), o = orient(a, b, c);
+      if (o === 0) continue;
+      const [u, v] = o > 0 ? [a, b] : [b, a];
+      const id = [key(u), key(v), kc].sort().join("|");
+      if (seen.has(id)) continue;
+      seen.add(id);
+      if (points.some(p => orient(u, v, p) > 0 && orient(v, c, p) > 0 && orient(c, u, p) > 0)) continue;
+      faces.push([u, v, c]);
+    }
+  }
+  return faces;
+}
+
+/** Konishi framing (CONVENTIONS.md) of the flag (triangle (w1, w2, w3) ccw, segment w1w2), where w3' is
+ *  the third vertex of the other triangle: w3' = -a1 w1 - a2 w2 - w3 on (x, y, 1), a1 + a2 = -2,
+ *  n = a1 + 1.  Eliminating a2: w3 + w3' - 2 w2 = a1 (w2 - w1); wedge with (w3 - w1) and use
+ *  (w2 - w1)^(w3 - w1) = 1 (unimodular):  a1 = (w3 + w3' - 2 w2) ^ (w3 - w1). */
+function framing(w1, w2, w3, w3p) {
+  const u = [w3[0] + w3p[0] - 2 * w2[0], w3[1] + w3p[1] - 2 * w2[1]];
+  return u[0] * (w3[1] - w1[1]) - u[1] * (w3[0] - w1[0]) + 1;
+}
+
+/** Outward normal (p, q) of the side w1 -> w2 of a ccw triangle: (dy, -dx) (toric._rot). */
+function pqNormal(w1, w2) { return [w2[1] - w1[1], -(w2[0] - w1[0])]; }
+
+/** Dual graph: for every triangle side, the triangles on each side.  Interior edges carry the JS
+ *  framing n at `tail` (the face in which the segment is (w1, w2) with the face ccw) and -n at `head`. */
+function dualGraph(faces) {
+  const sides = new Map();
+  faces.forEach((f, i) => {
+    for (let m = 0; m < 3; m++) {
+      const w1 = f[m], w2 = f[(m + 1) % 3], w3 = f[(m + 2) % 3], k = segKey(w1, w2);
+      if (!sides.has(k)) sides.set(k, []);
+      sides.get(k).push({ face: i, w1, w2, w3 });
+    }
+  });
+  const edges = [], rays = [];
+  for (const [k, list] of sides) {
+    if (list.length === 2) {
+      const [s, t] = list;
+      edges.push({ key: k, tail: s.face, head: t.face, n: framing(s.w1, s.w2, s.w3, t.w3),
+                   nHead: framing(t.w1, t.w2, t.w3, s.w3), pq: pqNormal(s.w1, s.w2), seg: [s.w1, s.w2] });
+    } else rays.push({ key: k, face: list[0].face, pq: pqNormal(list[0].w1, list[0].w2), seg: [list[0].w1, list[0].w2] });
+  }
+  return { edges, rays };
+}
+
+/** (p,q)-web vertices from heights h (lattice-point order): the vertex of a triangle is the
+ *  gradient u of the affine function equal to h on its vertices; for adjacent triangles u_head - u_tail
+ *  is orthogonal to the common side, i.e. parallel to its normal pq.  Returns null unless all
+ *  internal edges point along +pq (or all along -pq: then the picture is reflected through 0). */
+function webFromHeights(faces, pts, h, dual) {
+  if (!h || h.length !== pts.length || h.some(x => !Number.isFinite(x))) return null;
+  const H = new Map(pts.map((p, i) => [key(p), h[i]]));
+  const u = faces.map(([a, b, c]) => {
+    const db = H.get(key(b)) - H.get(key(a)), dc = H.get(key(c)) - H.get(key(a)), det = orient(a, b, c);
+    return [(db * (c[1] - a[1]) - dc * (b[1] - a[1])) / det, (dc * (b[0] - a[0]) - db * (c[0] - a[0])) / det];
+  });
+  let sign = 0;
+  for (const e of dual.edges) {
+    const d = [u[e.head][0] - u[e.tail][0], u[e.head][1] - u[e.tail][1]];
+    const t = d[0] * e.pq[0] + d[1] * e.pq[1], cr = d[0] * e.pq[1] - d[1] * e.pq[0];
+    if (Math.abs(cr) > 1e-9 || Math.abs(t) < 1e-9 || (sign && Math.sign(t) !== sign)) return null;
+    sign = Math.sign(t);
+  }
+  return sign < 0 ? u.map(([x, y]) => [-x, -y]) : u;
+}
+
+/** Compact corner string -> corners; mirrors polygon.parse_polygon (URL, "p=..." or bare list). */
+function parsePolygon(s) {
+  let m = s.match(/[?&#]p=([^&\s]+)/);
+  if (!m) m = s.match(/^\s*p=([^&\s]+)/);
+  const body = m ? decodeURIComponent(m[1]) : s;
+  if (/\d\.\d/.test(body)) throw new Error("coordinates must be whole numbers");
+  const nums = (body.match(/(?<!\d)-?\d+/g) || []).map(Number);
+  if (nums.length % 2) throw new Error("odd number of coordinates");
+  const out = [];
+  for (let i = 0; i < nums.length; i += 2) out.push([nums[i], nums[i + 1]]);
+  return out;
+}
+const formatPolygon = corners => "p=" + corners.map(key).join("_");
+const triStr = tris => tris.map(t => t.map(key).join(" ")).join("; ");
+
+/* =====================================================================================
+ * STATE AND ANALYSIS
+ * ===================================================================================== */
+const S = {
+  corners: [],            // polygon corners (hull vertices once there are >= 3 non-collinear points)
+  segs: new Map(),        // interior diagonals: segKey -> [a, b]
+  mode: "polygon",
+  pending: null,          // first endpoint of a diagonal being drawn
+  view: { cx: 0, cy: 0, s: 0 },   // centre (lattice units) and scale (px per unit; 0 = not yet set)
+  backend: null,          // {stamp, edges: Map segKey -> backend edge, regular, heights}
+  stamp: 0,               // incremented on every change (to drop stale server answers)
+};
+/* Compute backend: "server" (python -m topvertex --draw: POST /api/...), "pyodide" (any other http(s)
+ * origin, e.g. the static site built by tools/build_site.py: the package runs in the browser),
+ * "none" (file://: export only), "probing" while the server probe runs. */
+let BACKEND = location.protocol === "file:" ? "none" : "probing";
+const SITE_URL = "https://putrov.github.io/topvertex/";
+const REPO_URL = "https://github.com/putrov/topvertex";
+const PYODIDE_VERSION = "0.27.7";   // sympy 1.13.3 (sympy.solvers.simplex needs >= 1.13)
+const PYODIDE_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
+
+/** Polygon data of S.corners: hull, lattice points (enough for whyNot). */
+function polyGeo() {
+  const hull = convexHull(S.corners);
+  const pts = hull.length >= 3 ? latticePoints(hull) : [];
+  return { hull, pts, ptSet: new Set(pts.map(key)), A2: hull.length >= 3 ? area2(hull) : 0 };
+}
+
+/** Everything derived from S.corners and S.segs (the diagonals must be admissible). */
+function analyze() {
+  const geo = polyGeo(), { hull, pts } = geo;
+  geo.bdry = pts.filter(p => inHull(p, hull) === 0);
+  geo.B = geo.bdry.length;
+  geo.I = pts.length - geo.B;
+  geo.bsegs = hull.length >= 3 ? boundarySegments(hull) : [];
+  geo.faces = pts.length ? triangleFaces(pts, geo.bsegs.concat([...S.segs.values()])) : [];
+  geo.need = pts.length ? 3 * geo.I + geo.B - 3 : 0;     // interior edges of a unimodular triangulation
+  geo.complete = pts.length > 0 && S.segs.size === geo.need && geo.faces.length === geo.A2
+                 && geo.faces.length === 2 * geo.I + geo.B - 2 && !anyAdmissible(geo);
+  geo.dual = geo.complete ? dualGraph(geo.faces) : null;
+  return geo;
+}
+
+function anyAdmissible(geo) {
+  for (let i = 0; i < geo.pts.length; i++)
+    for (let j = i + 1; j < geo.pts.length; j++)
+      if (!whyNot(geo.pts[i], geo.pts[j], geo, S.segs)) return true;
+  return false;
+}
+
+/* =====================================================================================
+ * ACTIONS
+ * ===================================================================================== */
+function changed(msg, cls) {
+  S.stamp++;
+  S.backend = null;
+  render();
+  say(msg || "", cls);
+  updateHash();
+  scheduleValidate();
+}
+
+function setCorners(list) {
+  for (const p of list) if (!Number.isInteger(p[0]) || !Number.isInteger(p[1])) throw new Error(`bad point ${p}`);
+  const hull = convexHull(list);
+  S.corners = hull.length >= 3 ? hull : list.filter((p, i) => list.findIndex(q => eq(p, q)) === i);
+  pruneSegments();
+}
+
+/** Drop diagonals that are no longer admissible after the polygon changed. */
+function pruneSegments() {
+  const geo = polyGeo(), old = [...S.segs.values()];
+  S.segs = new Map();
+  for (const [a, b] of old) if (!whyNot(a, b, geo, S.segs)) S.segs.set(segKey(a, b), [a, b]);
+}
+
+function addCorner(p) {
+  if (S.corners.some(q => eq(p, q))) return;
+  setCorners(S.corners.concat([p]));
+  changed(S.corners.some(q => eq(p, q)) ? "" : `${key(p)} is not a corner of the hull`);
+}
+
+function removeCorner(p) {
+  if (!S.corners.some(q => eq(p, q))) return say(`${key(p)} is not a corner`, "err");
+  setCorners(S.corners.filter(q => !eq(p, q)));
+  changed();
+}
+
+function toggleSegment(a, b) {
+  const k = segKey(a, b);
+  if (S.segs.has(k)) { S.segs.delete(k); return changed(`removed ${key(a)}–${key(b)}`); }
+  const why = whyNot(a, b, polyGeo(), S.segs);
+  if (why) return say(`cannot add ${key(a)}–${key(b)}: ${why}`, "err");
+  S.segs.set(k, [a, b]);
+  changed();
+}
+
+/** Greedy completion: add every admissible primitive diagonal, shortest first.  One pass suffices:
+ *  a pair rejected once stays rejected (the obstruction is a crossing with a segment that stays). */
+function autoTriangulate() {
+  const geo = polyGeo(), pairs = [];
+  for (let i = 0; i < geo.pts.length; i++)
+    for (let j = i + 1; j < geo.pts.length; j++) pairs.push([geo.pts[i], geo.pts[j]]);
+  const len = ([a, b]) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2;
+  pairs.sort((p, q) => len(p) - len(q) || lexCmp(p[0], q[0]) || lexCmp(p[1], q[1]));
+  for (const [a, b] of pairs) if (!whyNot(a, b, geo, S.segs)) S.segs.set(segKey(a, b), [a, b]);
+}
+
+/** Flip the diagonal k inside its quadrilateral if that is strictly convex. */
+function flipSegment(k) {
+  const [a, b] = S.segs.get(k), geo = analyze();
+  const third = geo.faces.filter(f => f.some(p => eq(p, a)) && f.some(p => eq(p, b)))
+                         .map(f => f.find(p => !eq(p, a) && !eq(p, b)));
+  if (third.length !== 2) return say("flip needs both triangles on this diagonal", "err");
+  const [c, d] = third;
+  if (!(orient(c, d, a) * orient(c, d, b) < 0)) return say("quadrilateral is not strictly convex: cannot flip", "err");
+  S.segs.delete(k);
+  S.segs.set(segKey(c, d), [c, d]);
+  changed(`flipped ${key(a)}–${key(b)} → ${key(c)}–${key(d)}`);
+}
+
+/** Load corners + triangles (JSON import, URL hash): diagonals = interior sides of the triangles. */
+function loadTriangles(corners, tris) {
+  setCorners(corners);
+  S.segs = new Map();
+  const geo = polyGeo(), bad = [];
+  for (const t of tris) for (let m = 0; m < 3; m++) {
+    const a = t[m], b = t[(m + 1) % 3];
+    if (onBoundary(a, b, geo.hull) || S.segs.has(segKey(a, b))) continue;
+    const why = whyNot(a, b, geo, S.segs);
+    if (why) bad.push(`${key(a)}–${key(b)}: ${why}`); else S.segs.set(segKey(a, b), [a, b]);
+  }
+  return bad;
+}
+
+function fitView() {
+  const svg = $("canvas"), w = svg.clientWidth || 800, h = svg.clientHeight || 540;
+  const pts = S.corners.length ? S.corners : [[-4, -4], [4, 4]];
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const x0 = Math.min(...xs, -1), x1 = Math.max(...xs, 1), y0 = Math.min(...ys, -1), y1 = Math.max(...ys, 1);
+  const span = Math.max(x1 - x0, y1 - y0, 8) + 1.2;
+  S.view = { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, s: Math.min(w, h) / span };
+}
+
+/* =====================================================================================
+ * RENDERING
+ * ===================================================================================== */
+const $ = id => document.getElementById(id);
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function toScreen(p, v, svg) {
+  return [svg.clientWidth / 2 + (p[0] - v.cx) * v.s, svg.clientHeight / 2 - (p[1] - v.cy) * v.s];
+}
+function toLattice(x, y, v, svg) {
+  return [(x - svg.clientWidth / 2) / v.s + v.cx, -(y - svg.clientHeight / 2) / v.s + v.cy];
+}
+
+let GEO = null;
+
+function render() {
+  GEO = analyze();
+  renderCanvas(GEO);
+  renderWeb(GEO);
+  renderStatus(GEO);
+  renderExport(GEO);
+}
+
+function renderCanvas(geo) {
+  const svg = $("canvas"), v = S.view;
+  svg.innerHTML = "";
+  const w = svg.clientWidth, h = svg.clientHeight, P = p => toScreen(p, v, svg);
+  const [lx0, ly1] = toLattice(0, 0, v, svg), [lx1, ly0] = toLattice(w, h, v, svg);
+  // axes and grid dots
+  const [ox, oy] = P([0, 0]);
+  el("line", { x1: 0, y1: oy, x2: w, y2: oy, stroke: css("--line") }, svg);
+  el("line", { x1: ox, y1: 0, x2: ox, y2: h, stroke: css("--line") }, svg);
+  const r = Math.max(1.5, Math.min(3, v.s / 25));
+  for (let x = Math.ceil(lx0); x <= Math.floor(lx1); x++)
+    for (let y = Math.ceil(ly0); y <= Math.floor(ly1); y++) {
+      const [sx, sy] = P([x, y]);
+      el("circle", { cx: sx, cy: sy, r, fill: css("--grid") }, svg);
+    }
+  if (geo.hull.length >= 3) {
+    el("polygon", { points: geo.hull.map(P).map(q => q.join(",")).join(" "), fill: css("--poly"),
+                    stroke: css("--polyedge"), "stroke-width": 2 }, svg);
+    for (const f of geo.faces) el("polygon", { points: f.map(P).map(q => q.join(",")).join(" "), fill: css("--face") }, svg);
+  } else if (geo.hull.length === 2) {
+    const [a, b] = geo.hull.map(P);
+    el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: css("--polyedge"), "stroke-width": 2, "stroke-dasharray": "4 4" }, svg);
+  }
+  for (const [a, b] of S.segs.values()) {
+    const [p, q] = [P(a), P(b)];
+    el("line", { x1: p[0], y1: p[1], x2: q[0], y2: q[1], stroke: css("--diag"), "stroke-width": 1.6 }, svg);
+  }
+  for (const p of geo.pts) {
+    const [sx, sy] = P(p), bd = inHull(p, geo.hull) === 0;
+    el("circle", { cx: sx, cy: sy, r: r + 2.5, fill: bd ? css("--bpt") : css("--ipt") }, svg);
+  }
+  for (const c of S.corners) {
+    const [sx, sy] = P(c);
+    el("circle", { cx: sx, cy: sy, r: r + 6, fill: "none", stroke: css("--corner"), "stroke-width": 2 }, svg);
+  }
+  if (S.pending) {
+    const [sx, sy] = P(S.pending);
+    el("circle", { cx: sx, cy: sy, r: r + 8, fill: "none", stroke: css("--pending"), "stroke-width": 3 }, svg);
+  }
+  hoverMark = el("circle", { r: r + 4, fill: "none", stroke: css("--accent"), "stroke-width": 1.5, visibility: "hidden" }, svg);
+  rubber = el("line", { stroke: css("--pending"), "stroke-width": 1.5, "stroke-dasharray": "5 4", visibility: "hidden" }, svg);
+}
+let hoverMark = null, rubber = null;
+
+/** Dual web panel: the true (p,q)-web when heights are known (Heights field, else the backend's
+ *  default heights), else nodes at the triangle centroids.  Edges are labelled (p,q) (outward
+ *  normal at the tail) and with the framings at both ends (backend values after validate/compute,
+ *  JS preview otherwise). */
+function renderWeb(geo) {
+  const svg = $("web");
+  svg.innerHTML = "";
+  if (!geo.dual) {
+    $("webcap").textContent = "dual web (appears when the triangulation is complete)";
+    $("webcap").className = "cap";
+    return;
+  }
+  const typed = $("heights").value.trim().split(/[\s,]+/).filter(Boolean).map(Number);
+  const hs = typed.length ? typed : S.backend && S.backend.heights;
+  let pos = webFromHeights(geo.faces, geo.pts, hs, geo.dual), layout = "from heights";
+  if (!pos) {
+    pos = geo.faces.map(f => [(f[0][0] + f[1][0] + f[2][0]) / 3, (f[0][1] + f[1][1] + f[2][1]) / 3]);
+    layout = "nodes at triangle centroids";
+  }
+  const W = svg.clientWidth, H = svg.clientHeight, R = 60, pad = R + 45;
+  const xs = pos.map(p => p[0]), ys = pos.map(p => p[1]);
+  const sx = Math.max(...xs) - Math.min(...xs), sy = Math.max(...ys) - Math.min(...ys);
+  const v = { cx: (Math.max(...xs) + Math.min(...xs)) / 2, cy: (Math.max(...ys) + Math.min(...ys)) / 2,
+              s: Math.min(sx ? (W - 2 * pad) / sx : 1e9, sy ? (H - 2 * pad) / sy : 1e9, 200) };
+  const P = p => toScreen(p, v, svg), fid = f => f.map(key).sort().join("|"), fs = 12;
+  const be = S.backend && S.backend.edges;
+  let source = "JS preview";
+  const mismatch = [];
+  const label = (p, txt, color, weight) =>
+    el("text", { x: p[0], y: p[1], fill: color, "font-size": fs, "font-weight": weight || 400,
+                 "text-anchor": "middle", "dominant-baseline": "central", "paint-order": "stroke",
+                 stroke: css("--panel"), "stroke-width": 4 }, svg, txt);
+  const sgn = x => (x > 0 ? "+" : "") + x;
+  for (const r of geo.dual.rays) {
+    const a = P(pos[r.face]), L = Math.hypot(r.pq[0], r.pq[1]), u = [r.pq[0] / L, -r.pq[1] / L];  // screen y down
+    el("line", { x1: a[0], y1: a[1], x2: a[0] + R * u[0], y2: a[1] + R * u[1], stroke: css("--web"), "stroke-width": 1.6 }, svg);
+    label([a[0] + (R + 22) * u[0], a[1] + (R + 22) * u[1]], `(${r.pq[0]},${r.pq[1]})`, css("--muted"));
+  }
+  for (const e of geo.dual.edges) {
+    let n = e.n, name = "";
+    if (e.nHead !== -e.n) mismatch.push(`${e.key} (JS: ${e.n} vs ${e.nHead})`);
+    if (be && be.has(e.key)) {
+      const b = be.get(e.key), nb = fid(b.tail) === fid(geo.faces[e.tail]) ? b.n : -b.n;
+      if (nb !== e.n) mismatch.push(`${e.key} (JS ${e.n}, Python ${nb})`);
+      n = nb;
+      name = " " + b.name;
+      source = "Python backend";
+    }
+    const [a, b] = [P(pos[e.tail]), P(pos[e.head])], len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    const nrm = [-(b[1] - a[1]) / len, (b[0] - a[0]) / len];
+    el("line", { x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: css("--web"), "stroke-width": 2.4 }, svg);
+    label([(a[0] + b[0]) / 2 + 14 * nrm[0], (a[1] + b[1]) / 2 + 14 * nrm[1]], `(${e.pq[0]},${e.pq[1]})${name}`, css("--ink"));
+    const at = t => [a[0] + t * (b[0] - a[0]) - 12 * nrm[0], a[1] + t * (b[1] - a[1]) - 12 * nrm[1]];
+    label(at(0.2), sgn(n), css("--web"), 700);
+    label(at(0.8), sgn(-n), css("--web"), 700);
+  }
+  for (const p of pos) { const [x, y] = P(p); el("circle", { cx: x, cy: y, r: 4.5, fill: css("--web") }, svg); }
+  $("webcap").textContent = `dual web (${layout}) · framings: ${source}` + (mismatch.length ? ` · MISMATCH ${mismatch.join(", ")}` : "");
+  $("webcap").className = "cap" + (mismatch.length ? " err" : "");
+}
+
+function renderStatus(geo) {
+  const st = $("status");
+  if (!geo.pts.length) { st.innerHTML = `<span class="muted">Click at least three non-collinear lattice points (mode Polygon).</span>`; return; }
+  const lines = [
+    `${geo.pts.length} lattice points: ${geo.B} boundary, ${geo.I} interior; twice-area ${geo.A2}`,
+    `diagonals ${S.segs.size} / ${geo.need} (3I + B − 3); triangles found ${geo.faces.length} / ${geo.A2} (2I + B − 2)`,
+    `<span class="muted">I: number of interior lattice points, B: number of lattice points on the boundary</span>`,
+    geo.complete ? `<b class="ok">complete unimodular triangulation</b>`
+                 : `<b class="err">incomplete</b> <span class="muted">— add diagonals or press Auto-triangulate</span>`,
+    `<span class="muted">lattice-point order (truncation heights): ${geo.pts.map(p => "(" + key(p) + ")").join(" ")}</span>`,
+  ];
+  if (S.backend) {
+    lines.push(S.backend.ok ? (S.backend.regular ? `<span class="ok">regular</span>` +
+                                                   (S.backend.heights.length ? `; default truncation heights ${S.backend.heights.join(",")}` : "")
+                                                 : `<span class="err">not regular</span>: give truncation heights or choose another triangulation`)
+                            : `<span class="err">backend: ${esc(S.backend.error)}</span>`);
+    if (S.backend.ok && S.backend.heights.length) $("heights").placeholder = "truncation heights (default " + S.backend.heights.join(",") + ")";
+  }
+  st.innerHTML = lines.map(l => `<div>${l}</div>`).join("");
+}
+
+function currentTriangles(geo) { return geo.complete ? geo.faces : []; }
+
+function renderExport(geo) {
+  const cornerText = geo.hull.length >= 3 ? formatPolygon(geo.hull) : S.corners.length ? formatPolygon(S.corners) : "";
+  if (document.activeElement !== $("corners")) $("corners").value = cornerText;
+  if (!geo.complete) { $("cmd").value = geo.pts.length ? "(complete the triangulation first)" : ""; return; }
+  let cmd = `python -m topvertex "${formatPolygon(geo.hull)}" --triangles "${triStr(geo.faces)}" --order ${$("order").value || 4}`;
+  const h = $("heights").value.trim();
+  if (h) cmd += ` --heights=${h.replace(/\s+/g, "")}`;
+  if ($("gv").checked) cmd += " --gv";
+  if ($("classes").checked) cmd += " --classes";
+  if ($("fmt").value !== "text") cmd += ` --format ${$("fmt").value === "mathjax" ? "latex" : $("fmt").value}`;
+  if ($("nek").checked) cmd += " --nekrasov";
+  $("cmd").value = cmd;
+}
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+function say(msg, cls) { $("msg").innerHTML = msg ? `<span class="${cls || "muted"}">${esc(msg)}</span>` : ""; }
+
+/* =====================================================================================
+ * URL HASH, JSON
+ * ===================================================================================== */
+function updateHash() {
+  if (S.selftest) return;
+  const geo = GEO || analyze();
+  let h = geo.hull.length >= 3 ? formatPolygon(geo.hull) : "";
+  if (h && S.segs.size) h += "&d=" + [...S.segs.values()].map(([a, b]) => key(a) + "," + key(b)).join("_");
+  const hv = $("heights").value.replace(/\s+/g, "");
+  if (h && hv) h += "&h=" + hv;
+  history.replaceState(null, "", h ? "#" + h : location.pathname + location.search);
+}
+
+/** URL hash options: p (polygon, compact corner format), d (diagonals), h (heights), order, format, gv,
+ *  classes, nek, auto=compute (compute on load when served), or selftest=<json>. */
+function loadHash() {
+  const raw = location.hash.slice(1);
+  if (raw.startsWith("selftest=")) return runSelftest(JSON.parse(decodeURIComponent(raw.slice(9))));
+  const q = new URLSearchParams(raw);
+  if (q.has("order")) $("order").value = q.get("order");
+  if (q.has("format") && [...$("fmt").options].some(o => o.value === q.get("format"))) $("fmt").value = q.get("format");
+  for (const k of ["gv", "classes", "nek"]) if (q.has(k)) $(k).checked = q.get(k) !== "0";
+  if (q.has("h")) $("heights").value = q.get("h");
+  S.autoCompute = q.get("auto") === "compute";
+  if (!q.has("p")) return;
+  try {
+    setCorners(parsePolygon(q.get("p")));
+    if (q.has("d")) {
+      for (const s of q.get("d").split("_")) {
+        const n = s.split(",").map(Number);
+        if (n.length === 4 && n.every(Number.isInteger)) { const a = [n[0], n[1]], b = [n[2], n[3]];
+          if (!whyNot(a, b, polyGeo(), S.segs)) S.segs.set(segKey(a, b), [a, b]); }
+      }
+    } else autoTriangulate();
+  } catch (e) { say("bad URL hash: " + e.message, "err"); }
+}
+
+function exportJSON() {
+  const geo = GEO || analyze();
+  $("json").value = JSON.stringify({ corners: geo.hull.length >= 3 ? geo.hull : S.corners, triangles: currentTriangles(geo) });
+}
+
+function importJSON() {
+  try {
+    const o = JSON.parse($("json").value);
+    if (!Array.isArray(o.corners)) throw new Error("need a list 'corners'");
+    const bad = loadTriangles(o.corners.map(p => [Number(p[0]), Number(p[1])]), o.triangles || []);
+    fitView();
+    changed(bad.length ? "ignored: " + bad.join("; ") : "imported", bad.length ? "err" : "ok");
+  } catch (e) { say("JSON import: " + e.message, "err"); }
+}
+
+/* =====================================================================================
+ * BACKENDS: the local server (python -m topvertex --draw) or Pyodide in the browser
+ * ===================================================================================== */
+function payload(geo) { return { corners: geo.hull, triangles: currentTriangles(geo) }; }
+
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  let j;
+  try { j = await r.json(); } catch (e) { j = { error: `HTTP ${r.status}` }; }
+  if (!r.ok && !j.error) j.error = `HTTP ${r.status}`;
+  return j;
+}
+
+/** Store the backend's answer (validate, or compute: then only the edges are replaced). */
+function setBackend(stamp, res, fromCompute) {
+  if (stamp !== S.stamp) return;
+  const edges = new Map((res.edges || []).map(e => [segKey(e.segment[0], e.segment[1]), e]));
+  S.backend = fromCompute ? Object.assign({ ok: true, regular: true, heights: [] }, S.backend || {}, { edges })
+                          : { ok: !res.error && res.ok !== false, error: res.error, regular: res.regular !== false,
+                              heights: res.heights || [], edges };
+  render();
+}
+
+let validateTimer = null;
+/** Live validation (framings, regularity, default heights) by the backend; in Pyodide mode only
+ *  once Pyodide is loaded (never triggers the download by itself). */
+function scheduleValidate() {
+  clearTimeout(validateTimer);
+  if (!GEO || !GEO.complete || !(BACKEND === "server" || (BACKEND === "pyodide" && PY.ready))) return;
+  const stamp = S.stamp, body = payload(GEO);
+  validateTimer = setTimeout(async () => {
+    try { setBackend(stamp, await backendCall("/api/validate", body)); } catch (e) { /* backend gone: ignore */ }
+  }, 200);
+}
+
+/** Is the page served by python -m topvertex --draw?  (The server answers a POST to /api/validate
+ *  with JSON {ok: ...}; static hosts answer 404/405/501.) */
+async function detectBackend() {
+  if (location.protocol === "file:") return (BACKEND = "none");
+  try {
+    const r = await fetch("/api/validate", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", cache: "no-store" });
+    const j = await r.json();
+    if (r.ok && "ok" in j) return (BACKEND = "server");
+  } catch (e) { /* not the topvertex server */ }
+  return (BACKEND = "pyodide");
+}
+
+function showBackendHint() {
+  const h = $("chint"), b = $("b-compute");
+  b.disabled = BACKEND === "none" || BACKEND === "probing";
+  if (BACKEND === "none")
+    h.innerHTML = `Compute needs the local server: run <code>python -m topvertex --draw</code> (export works offline), ` +
+                  `or use the online version at <a href="${SITE_URL}">${SITE_URL}</a>.`;
+  else if (BACKEND === "pyodide")
+    h.innerHTML = PY.ready ? `runs in this browser (Pyodide ${PYODIDE_VERSION}, topvertex ${esc(PY.version)})`
+      : `Runs in this browser (Pyodide; ~15 MB download on first Compute, cached afterwards). Limits: order ≤ 6, ` +
+        `≤ 12 lattice points; a <a href="${REPO_URL}">local installation</a> lifts them.`;
+  else h.textContent = BACKEND === "probing" ? "checking for the local server…" : "";
+}
+
+/* -------------------------------------------------------------------------------------
+ * PYODIDE BACKEND: a Web Worker loads Pyodide from the CDN, sympy + micropip, installs the
+ * topvertex wheel named in manifest.json (same origin, built by tools/build_site.py) and calls
+ * topvertex.draw.compute.handle_json, i.e. the same code as the local server.  Messages:
+ * {kind: "init"|"call"|"run", id, ...} -> {id, ok, result|error, time} or {progress}.
+ * "run" executes Python source and returns str(result) (for tests and the browser console).
+ * ------------------------------------------------------------------------------------- */
+const WORKER_SRC = `
+let py = null, handleJson = null;
+self.onmessage = async (ev) => {
+  const m = ev.data, t0 = performance.now(), done = r => postMessage(Object.assign({ id: m.id, ok: true, time: (performance.now() - t0) / 1000 }, r));
+  try {
+    if (m.kind === "init") {
+      postMessage({ progress: "downloading Pyodide " + m.version + " (~15 MB the first time)…" });
+      importScripts(m.indexURL + "pyodide.js");
+      py = await loadPyodide({ indexURL: m.indexURL });
+      postMessage({ progress: "loading sympy and micropip…" });
+      await py.loadPackage(["sympy", "micropip"], { messageCallback: () => {} });
+      postMessage({ progress: "installing topvertex…" });
+      await py.pyimport("micropip").install.callKwargs(m.wheelUrl, { deps: false });
+      if (m.importCompute !== false) {
+        postMessage({ progress: "importing topvertex…" });
+        handleJson = py.runPython("from topvertex.draw.compute import handle_json; handle_json");
+      }
+      done({});
+    } else if (m.kind === "call") {
+      if (!handleJson) handleJson = py.runPython("from topvertex.draw.compute import handle_json; handle_json");
+      done({ result: JSON.parse(handleJson(m.path, m.body, "pyodide")) });
+    } else if (m.kind === "run") {
+      done({ result: String(py.runPython(m.code)) });
+    }
+  } catch (e) {
+    const msg = String((e && e.message) || e).trim(), lines = msg.split("\\n");
+    console.error(msg);   // full Python traceback in the console; the page shows the exception line
+    postMessage({ id: m.id, ok: false, error: lines.filter(l => /^\\w*(Error|Exception)\\b/.test(l.trim())).pop() || lines.pop() });
+  }
+};`;
+
+const PY = { worker: null, ready: false, init: null, seq: 0, pending: new Map(), loadTime: null, version: "" };
+window.topvertexDraw = { PY, pyInit, pyRequest, backendCall, backend: () => BACKEND };   // for the console and tests
+
+function pyWorker() {
+  if (PY.worker) return PY.worker;
+  PY.worker = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: "text/javascript" })));
+  PY.worker.onmessage = ev => {
+    const m = ev.data;
+    if (m.progress) { $("chint").textContent = m.progress; return; }
+    const p = PY.pending.get(m.id);
+    if (!p) return;
+    PY.pending.delete(m.id);
+    if (m.ok) p.resolve(m); else p.reject(new Error(m.error));
+  };
+  PY.worker.onerror = ev => { for (const p of PY.pending.values()) p.reject(new Error(ev.message || "worker error")); PY.pending.clear(); };
+  return PY.worker;
+}
+
+function pyRequest(msg) {
+  const id = ++PY.seq;
+  return new Promise((resolve, reject) => { PY.pending.set(id, { resolve, reject }); pyWorker().postMessage(Object.assign({ id }, msg)); });
+}
+
+/** Load Pyodide + topvertex once (the promise is shared; retried after a failure). */
+function pyInit(opts) {
+  if (!PY.init) PY.init = (async () => {
+    const r = await fetch("manifest.json", { cache: "no-store" });
+    if (!r.ok) throw new Error(`manifest.json not found (HTTP ${r.status}): this static page needs the files built by tools/build_site.py`);
+    const man = await r.json();
+    const res = await pyRequest(Object.assign({ kind: "init", indexURL: PYODIDE_URL, version: PYODIDE_VERSION,
+                                                wheelUrl: new URL(man.wheel, location.href).href }, opts || {}));
+    PY.loadTime = res.time;
+    PY.version = man.version;
+    PY.ready = true;
+    showBackendHint();
+  })();
+  PY.init.catch(() => { PY.init = null; });
+  return PY.init;
+}
+
+/** POST-like call to the active backend; resolves to the answer object (with .error on failure). */
+async function backendCall(path, body) {
+  if (BACKEND === "server") return post(path, body);
+  if (BACKEND !== "pyodide") throw new Error("no compute backend (open the page through python -m topvertex --draw)");
+  await pyInit();
+  const r = await pyRequest({ kind: "call", path, body: JSON.stringify(body) });
+  return r.result.body;
+}
+
+async function compute() {
+  const geo = GEO || analyze(), out = $("result");
+  if (!geo.complete) { out.innerHTML = `<div class="err">complete the triangulation first</div>`; return; }
+  const h = $("heights").value.trim();
+  const body = Object.assign(payload(geo), {
+    order: parseInt($("order").value, 10), gv: $("gv").checked, classes: $("classes").checked,
+    nekrasov: $("nek").checked,
+    format: $("fmt").value, heights: h ? h.split(/[\s,]+/).filter(Boolean).map(Number) : null, latex: true,
+  });
+  const stamp = S.stamp;
+  out.innerHTML = `<div class="muted">computing…</div>`;
+  $("b-compute").disabled = true;
+  let res;
+  const t0 = performance.now(), firstLoad = BACKEND === "pyodide" && !PY.ready;
+  try { res = await backendCall("/api/compute", body); }
+  catch (e) {
+    res = { error: BACKEND === "server" ? "no answer from the server (is python -m topvertex --draw still running?)"
+                                        : `Pyodide backend failed: ${e.message}` };
+  }
+  $("b-compute").disabled = false;
+  showBackendHint();
+  if (BACKEND === "pyodide" && !res.error) {
+    res.wall = (performance.now() - t0) / 1000;
+    res.backend = `Pyodide${firstLoad ? `, loaded in ${PY.loadTime.toFixed(1)} s` : ""}`;
+    scheduleValidate();
+  }
+  if (res.error) { out.innerHTML = `<div class="err">${esc(res.error)}</div>`; return; }
+  setBackend(stamp, res, true);
+  LAST = res;
+  $("b-copytex").disabled = !res.Z_latex;
+  out.innerHTML = "";
+  const add = (html, cls) => { const d = document.createElement("div"); d.className = cls || ""; d.innerHTML = html; out.appendChild(d); return d; };
+  const where = res.backend ? ` (${res.backend})` : "";
+  const tools = add(`<span class="muted">time ${res.time.toFixed(2)} s${where} · weights ${res.weights.join(",")}</span> `);
+  if (res.Z_latex) {
+    const b = document.createElement("button");
+    b.textContent = "copy LaTeX";
+    b.onclick = () => copyText(latexBundle(res), "LaTeX");
+    tools.appendChild(b);
+  }
+  if (res.format === "mathjax" && res.Z_latex) renderMath(res, out, add);
+  else {
+    const rows = res.edges.map(e => `<tr><td>${e.name}</td><td>(${e.segment[0]})–(${e.segment[1]})</td><td>${e.n}</td>` +
+                                     `<td>${e.weight}</td><td>${e.class ? "(" + e.class.join(",") + ")" : "–"}</td></tr>`).join("");
+    add(`<table><tr><th>edge<br>e</th><th>segment</th><th>framing<br>n_e</th><th>trunc. weight<br>w_e</th><th>H2 class</th></tr>${rows}</table>`);
+    if (res.basis) add(`class basis (relation vectors): ${esc(JSON.stringify(res.basis))}`, "muted");
+    add(`<div>Z (truncated at weight ${res.order}):</div><pre>${esc(res.Z)}</pre>`);
+    if (res.gv_table) add(`<div>Gopakumar–Vafa invariants n<sup>g</sup><sub>β</sub>:</div><pre>${esc(res.gv_table)}</pre>`);
+    else if (body.gv) add(`no curve classes: GV invariants unavailable`, "muted");
+    if (res.F) add(`<details><summary>F = log Z</summary><pre>${esc(res.F)}</pre></details>`);
+  }
+  if (res.nekrasov) add(`<pre>${esc(res.nekrasov)}</pre>`);
+  add(`CLI: <code>${esc(res.command)}</code>`, "muted");
+}
+
+/* =====================================================================================
+ * MATHJAX (format "rendered"): MathJax 3 is loaded from the CDN on first use (5 s timeout);
+ * without it the raw LaTeX is shown.  Each line is its own display block; long coefficients
+ * come pre-broken from the server (aligned), since MathJax 3 has no display line breaking.
+ * ===================================================================================== */
+const MATHJAX_URL = "https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-chtml.js";
+let LAST = null, mathJaxPromise = null;
+
+function ensureMathJax() {
+  if (window.MathJax && window.MathJax.typesetPromise) return Promise.resolve();
+  if (mathJaxPromise) return mathJaxPromise;
+  mathJaxPromise = new Promise((resolve, reject) => {
+    window.MathJax = { startup: { typeset: false, ready() { MathJax.startup.defaultReady(); MathJax.startup.promise.then(resolve, reject); } } };
+    const sc = document.createElement("script");
+    sc.src = MATHJAX_URL;
+    sc.async = true;
+    sc.onerror = () => reject(new Error("could not load " + MATHJAX_URL));
+    document.head.appendChild(sc);
+    setTimeout(() => reject(new Error("timeout (5 s) loading " + MATHJAX_URL)), 5000);
+  });
+  mathJaxPromise.catch(() => { mathJaxPromise = null; });
+  return mathJaxPromise;
+}
+
+function renderMath(res, out, add) {
+  const blocks = [];
+  const disp = (tex, parent) => {
+    const d = document.createElement("div");
+    d.className = "disp";
+    d.textContent = "\\[" + tex + "\\]";
+    (parent || out).appendChild(d);
+    blocks.push([d, tex]);
+  };
+  const status = add("typesetting…", "muted");
+  add("internal edges", "sub"); disp(res.edges_latex);
+  if (res.gv_latex) { add("Gopakumar–Vafa invariants n<sup>g</sup><sub>β</sub>", "sub"); disp(res.gv_latex); }
+  add(`Z (truncated at weight ${res.order})`, "sub");
+  res.Z_latex.forEach(l => disp(l));
+  if (res.F_latex) {
+    const d = document.createElement("details");
+    d.innerHTML = "<summary>F = log Z</summary>";
+    out.appendChild(d);
+    res.F_latex.forEach(l => disp(l, d));
+  }
+  ensureMathJax().then(() => MathJax.typesetPromise([out])).then(() => {
+    status.textContent = "";
+    document.documentElement.dataset.mathjax = "done";
+  }).catch(err => {
+    for (const [d, tex] of blocks) { const pre = document.createElement("pre"); pre.className = "tex"; pre.textContent = tex; d.replaceWith(pre); }
+    status.className = "err";
+    status.textContent = `MathJax unavailable (${err.message || err}): raw LaTeX shown.`;
+    document.documentElement.dataset.mathjax = "failed";
+  });
+}
+
+/** All LaTeX of a result, as a pasteable fragment. */
+function latexBundle(res) {
+  if (!res || !res.Z_latex) return "";
+  const D = t => "\\[ " + t + " \\]";
+  const parts = [`% ${res.command}`, "% internal edges", D(res.edges_latex)];
+  if (res.gv_latex) parts.push("% Gopakumar-Vafa invariants", D(res.gv_latex));
+  parts.push(`% Z (truncated at weight ${res.order})`, ...res.Z_latex.map(D));
+  if (res.F_latex) parts.push("% F = log Z", ...res.F_latex.map(D));
+  return parts.join("\n");
+}
+
+function copyText(text, what) {
+  const fallback = () => {
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand("copy"); ta.remove();
+    say(ok ? `${what} copied` : `copy failed`, ok ? "ok" : "err");
+  };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => say(`${what} copied`, "ok"), fallback);
+  else fallback();
+}
+
+/* =====================================================================================
+ * EVENTS
+ * ===================================================================================== */
+function setMode(m) {
+  S.mode = m;
+  S.pending = null;
+  for (const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("on", b.dataset.mode === m);
+  render();
+}
+
+/** Lattice point under the mouse (within 0.3 units), or null. */
+function pointAt(ev) {
+  const svg = $("canvas"), rc = svg.getBoundingClientRect();
+  const [x, y] = toLattice(ev.clientX - rc.left, ev.clientY - rc.top, S.view, svg);
+  const p = [Math.round(x), Math.round(y)];
+  return { p: Math.hypot(x - p[0], y - p[1]) < 0.3 ? p : null, raw: [x, y] };
+}
+
+/** Diagonal within 0.15 units of the lattice position q, or null. */
+function segmentAt(q) {
+  let best = null, bd = 0.15;
+  for (const [k, [a, b]] of S.segs) {
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const t = Math.max(0, Math.min(1, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / (dx * dx + dy * dy)));
+    const d = Math.hypot(q[0] - a[0] - t * dx, q[1] - a[1] - t * dy);
+    if (d < bd && t > 0.05 && t < 0.95) { bd = d; best = k; }
+  }
+  return best;
+}
+
+let drag = null;
+function onDown(ev) {
+  const { p, raw } = pointAt(ev);
+  const remove = ev.button === 2 || (ev.button === 0 && ev.shiftKey);
+  if (ev.button === 1 || (ev.shiftKey && ev.button === 0 && !(p && S.mode === "polygon" && S.corners.some(c => eq(c, p))))) {
+    drag = { x: ev.clientX, y: ev.clientY, cx: S.view.cx, cy: S.view.cy };   // pan
+    ev.preventDefault();
+    return;
+  }
+  if (ev.button !== 0 && ev.button !== 2) return;
+  const sk = segmentAt(raw);
+  if (S.mode === "flip" || (ev.altKey && S.mode === "tri")) {
+    if (sk) flipSegment(sk); else say("click on an interior diagonal to flip it", "muted");
+    return;
+  }
+  if (S.mode === "polygon") {
+    if (!p) return;
+    return remove ? removeCorner(p) : addCorner(p);
+  }
+  // Triangulate mode: right-click on a diagonal removes it
+  if (remove) {
+    if (sk) { S.segs.delete(sk); changed("removed diagonal"); }
+    return;
+  }
+  if (!p) return;
+  if (!GEO.ptSet.has(key(p))) return say(`${key(p)} is not a lattice point of the polygon`, "err");
+  if (!S.pending) { S.pending = p; render(); return; }
+  const a = S.pending;
+  S.pending = null;
+  if (eq(a, p)) return render();
+  toggleSegment(a, p);
+  if (!S.segs.has(segKey(a, p))) render();
+}
+
+function onMove(ev) {
+  const svg = $("canvas");
+  if (drag) {
+    S.view.cx = drag.cx - (ev.clientX - drag.x) / S.view.s;
+    S.view.cy = drag.cy + (ev.clientY - drag.y) / S.view.s;
+    renderCanvas(GEO);
+    return;
+  }
+  const { p, raw } = pointAt(ev);
+  $("hover").textContent = p ? `(${key(p)})` : `(${raw[0].toFixed(1)}, ${raw[1].toFixed(1)})`;
+  if (hoverMark) {
+    hoverMark.setAttribute("visibility", p ? "visible" : "hidden");
+    if (p) { const [x, y] = toScreen(p, S.view, svg); hoverMark.setAttribute("cx", x); hoverMark.setAttribute("cy", y); }
+  }
+  if (rubber && S.pending) {
+    const [x1, y1] = toScreen(S.pending, S.view, svg), rc = svg.getBoundingClientRect();
+    const [x2, y2] = p ? toScreen(p, S.view, svg) : [ev.clientX - rc.left, ev.clientY - rc.top];
+    Object.entries({ x1, y1, x2, y2, visibility: "visible" }).forEach(([k, v]) => rubber.setAttribute(k, v));
+  }
+}
+
+function zoom(f) { S.view.s = Math.max(8, Math.min(400, S.view.s * f)); renderCanvas(GEO); }
+
+function init() {
+  const cv = $("canvas");
+  cv.addEventListener("mousedown", onDown);
+  cv.addEventListener("contextmenu", ev => ev.preventDefault());
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", () => { drag = null; });
+  cv.addEventListener("wheel", ev => { ev.preventDefault(); zoom(ev.deltaY < 0 ? 1.15 : 1 / 1.15); }, { passive: false });
+  for (const b of document.querySelectorAll("[data-mode]")) b.onclick = () => setMode(b.dataset.mode);
+  $("b-auto").onclick = () => { autoTriangulate(); changed(analyze().complete ? "triangulation completed" : "", "ok"); };
+  $("b-cleardiag").onclick = () => { S.segs.clear(); changed("diagonals cleared"); };
+  $("b-clearall").onclick = () => { S.corners = []; S.segs.clear(); S.pending = null; changed(); };
+  $("b-zoomin").onclick = () => zoom(1.25);
+  $("b-zoomout").onclick = () => zoom(1 / 1.25);
+  $("b-fit").onclick = () => { fitView(); renderCanvas(GEO); };
+  $("b-corners").onclick = () => {
+    try { setCorners(parsePolygon($("corners").value)); S.segs.clear(); fitView(); $("corners").blur(); changed(); }
+    catch (e) { say(e.message, "err"); }
+  };
+  $("corners").addEventListener("keydown", ev => { if (ev.key === "Enter") $("b-corners").click(); });
+  $("corners").addEventListener("paste", () => setTimeout(() => $("b-corners").click(), 0));
+  $("b-copy").onclick = () => copyText($("cmd").value, "command");
+  $("b-copytex").onclick = () => copyText(latexBundle(LAST), "LaTeX of the last result");
+  $("b-jsonout").onclick = exportJSON;
+  $("b-jsonin").onclick = importJSON;
+  for (const id of ["order", "heights", "gv", "classes", "fmt", "nek"]) $(id).addEventListener("input", () => renderExport(GEO));
+  $("heights").addEventListener("input", () => { renderWeb(GEO); updateHash(); });
+  $("b-compute").onclick = compute;
+  showBackendHint();
+  window.addEventListener("keydown", ev => {
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(ev.target.tagName)) return;
+    const d = 1, moves = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, d], ArrowDown: [0, -d] };
+    if (moves[ev.key]) { S.view.cx += moves[ev.key][0]; S.view.cy += moves[ev.key][1]; renderCanvas(GEO); ev.preventDefault(); }
+    else if (ev.key === "+" || ev.key === "=") zoom(1.25);
+    else if (ev.key === "-") zoom(1 / 1.25);
+    else if (ev.key === "Escape") { S.pending = null; render(); }
+  });
+  window.addEventListener("resize", () => render());
+  loadHash();
+  fitView();
+  setMode("polygon");
+  if (S.selftest) return mouseSelftest();
+  if (GEO.complete) say("polygon loaded and auto-triangulated", "ok");
+  updateHash();
+  detectBackend().then(() => {
+    showBackendHint();
+    scheduleValidate();
+    if (S.autoCompute) {
+      if (BACKEND !== "none" && GEO.complete) compute();
+      else say("auto=compute needs a compute backend and a complete triangulation", "err");
+    }
+  });
+}
+
+/* =====================================================================================
+ * SELF-TEST (#selftest=<json>, used by tests/test_draw.py through a headless screenshot):
+ * cases [{corners, triangles, framings: [{segment, tail, n}]}] computed by Python; checks the
+ * JS faces, completeness, framings and Auto-triangulate; paints the page green or red.
+ * ===================================================================================== */
+function runSelftest(cases) {
+  S.selftest = true;
+  const fails = [], fid = f => f.map(key).sort().join("|");
+  cases.forEach((c, i) => {
+    const bad = loadTriangles(c.corners, c.triangles);
+    let geo = analyze();
+    if (bad.length) fails.push(`case ${i}: ${bad.join(", ")}`);
+    if (!geo.complete) fails.push(`case ${i}: not complete`);
+    const want = new Set(c.triangles.map(fid)), got = new Set(geo.faces.map(fid));
+    if (want.size !== got.size || [...want].some(t => !got.has(t))) fails.push(`case ${i}: faces differ`);
+    if (geo.dual) for (const f of c.framings) {
+      const e = geo.dual.edges.find(e => e.key === segKey(f.segment[0], f.segment[1]));
+      if (!e) { fails.push(`case ${i}: no dual edge ${f.segment}`); continue; }
+      const n = fid(geo.faces[e.tail]) === fid(f.tail) ? e.n : -e.n;
+      if (n !== f.n || e.nHead !== -e.n) fails.push(`case ${i}: framing ${f.segment}: JS ${n}, Python ${f.n}`);
+    }
+    S.segs.clear();
+    autoTriangulate();
+    geo = analyze();
+    if (!geo.complete || geo.faces.length !== geo.A2) fails.push(`case ${i}: auto-triangulate incomplete`);
+    if (formatPolygon(parsePolygon("http://127.0.0.1:8765/#" + formatPolygon(c.corners))) !== formatPolygon(c.corners))
+      fails.push(`case ${i}: parsePolygon`);
+  });
+  S.selftest = { fails, n: cases.length };
+}
+
+/** Second part of the self-test (after init): synthetic mouse events on the canvas. */
+function mouseSelftest() {
+  const fails = S.selftest.fails, cv = $("canvas");
+  const click = (p, opts) => {
+    const rc = cv.getBoundingClientRect(), [x, y] = toScreen(p, S.view, cv);
+    cv.dispatchEvent(new MouseEvent("mousedown", Object.assign({ clientX: rc.left + x, clientY: rc.top + y, button: 0, bubbles: true }, opts)));
+    window.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  };
+  const check = (cond, what) => { if (!cond) fails.push("mouse: " + what); };
+  S.corners = []; S.segs.clear(); fitView(); setMode("polygon");
+  for (const p of [[0, 0], [1, 0], [1, 1], [0, 1], [2, 2]]) click(p);
+  check(formatPolygon(S.corners) === "p=0,0_1,0_2,2_0,1", "add corners " + formatPolygon(S.corners));
+  click([2, 2], { shiftKey: true });
+  click([1, 1], { button: 2 });
+  click([1, 1]);
+  check(formatPolygon(S.corners) === "p=0,0_1,0_1,1_0,1", "remove/add corners " + formatPolygon(S.corners));
+  setMode("tri");
+  click([0, 0]); click([1, 1]);
+  check(S.segs.has(segKey([0, 0], [1, 1])) && analyze().complete, "draw diagonal");
+  setMode("flip");
+  click([0.5, 0.5]);
+  check(S.segs.has(segKey([1, 0], [0, 1])) && S.segs.size === 1 && analyze().complete, "flip");
+  setMode("tri");
+  click([0, 0]); click([1, 0]);
+  check(S.segs.size === 1, "boundary segment rejected");
+  click([0.5, 0.5], { button: 2 });
+  check(S.segs.size === 0 && !analyze().complete, "remove diagonal");
+  const ok = fails.length === 0, div = document.createElement("div");
+  div.id = "selftest";
+  div.style.cssText = `position:fixed;inset:0;z-index:9;background:${ok ? "#00c000" : "#c00000"};color:#fff;font:20px monospace;padding:40px;white-space:pre-wrap`;
+  div.textContent = ok ? `SELFTEST PASS (${S.selftest.n} cases + mouse)` : "SELFTEST FAIL\n" + fails.join("\n");
+  document.body.appendChild(div);
+}
+
+init();
+</script>
+</body>
+</html>
