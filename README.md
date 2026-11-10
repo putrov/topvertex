@@ -56,7 +56,7 @@ the installation in more detail and describe every option.
 
 ### Try it online (no installation)
 
-<https://putrov.github.io/topvertex/> (active once the repository is public) is the same drawing
+<https://putrov.github.io/topvertex/> is the same drawing
 page, running the package inside the browser with [Pyodide](https://pyodide.org) (Python
 compiled to WebAssembly). Nothing is sent to a server, and the computation happens on the
 machine of the visitor. The first **Compute** downloads about 15 MB (Pyodide and sympy, cached
