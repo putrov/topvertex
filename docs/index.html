@@ -111,7 +111,7 @@ code { font-size: 12px; }
         <label title="writes Z in curve-class variables: one variable t_i per basis class of H2 instead of one variable Q_e per internal edge, so that edges in the same class share a variable"><input type="checkbox" id="classes"> classes</label>
         <label title="compares with the 5d Nekrasov partition function of the linear quiver when every triangle has a side parallel to one lattice direction, for all classes up to the order D"><input type="checkbox" id="nek"> Nekrasov</label>
       </div>
-      <div class="row"><input type="text" id="heights" spellcheck="false" placeholder="truncation heights (optional, lattice-point order)" title="truncation heights: one integer per lattice point, in the lattice-point order shown below the diagram. The triangles must be the projections of the lower faces of the convex hull of the lifted points (x, y, h). The heights fix the weights w_e of the internal edges (the edge lengths of the dual web), which define the truncation order D. Leave empty to let the program choose."></div>
+      <div class="row"><input type="text" id="heights" spellcheck="false" placeholder="truncation heights (optional, in the order of lattice points shown in the status box)" title="truncation heights: one integer per lattice point, in the order of lattice points shown in the status box. The triangles must be the projections of the lower faces of the convex hull of the lifted points (x, y, h). The heights fix the weights w_e of the internal edges (the edge lengths of the dual web), which define the truncation order D. Leave empty to let the program choose."></div>
       <div class="row"><button id="b-compute">Compute</button><span id="chint" class="muted"></span></div>
       <div id="result"></div>
     </section>
@@ -607,7 +607,7 @@ function renderStatus(geo) {
     `<span class="muted">I: number of interior lattice points, B: number of lattice points on the boundary</span>`,
     geo.complete ? `<b class="ok">complete unimodular triangulation</b>`
                  : `<b class="err">incomplete</b> <span class="muted">— add diagonals or press Auto-triangulate</span>`,
-    `<span class="muted">lattice-point order (truncation heights): ${geo.pts.map(p => "(" + key(p) + ")").join(" ")}</span>`,
+    `<span class="muted">order of lattice points for the truncation heights: ${geo.pts.map(p => "(" + key(p) + ")").join(" ")}</span>`,
   ];
   if (S.backend) {
     lines.push(S.backend.ok ? (S.backend.regular ? `<span class="ok">regular</span>` +
